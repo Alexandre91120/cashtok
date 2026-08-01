@@ -577,6 +577,23 @@ app.post('/submit-review', reviewLimiter, async (req, res) => {
 });
 
 // ============================================================
+// Diagnostic temporaire — vérifie STRIPE_SECRET_KEY sans jamais l'exposer
+// ============================================================
+app.get('/admin/debug-stripe-key', requireAdmin, (req, res) => {
+  const key = process.env.STRIPE_SECRET_KEY || '';
+  res.json({
+    length: key.length,
+    startsWithSk: key.startsWith('sk_'),
+    firstChars: key.slice(0, 8),
+    lastCharCode: key.length ? key.charCodeAt(key.length - 1) : null,
+    firstCharCode: key.length ? key.charCodeAt(0) : null,
+    hasLeadingOrTrailingWhitespace: key !== key.trim(),
+    hasNewline: /[\r\n]/.test(key),
+    hasQuotes: key.includes('"') || key.includes("'"),
+  });
+});
+
+// ============================================================
 // Paiement Stripe Checkout (carte + Apple Pay automatiques)
 // ============================================================
 app.post('/create-checkout-session', async (req, res) => {

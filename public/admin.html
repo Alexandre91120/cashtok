@@ -16,7 +16,18 @@
       <div class="nav-links">
         <a href="/">Voir le site</a>
       </div>
-      <button id="logout-btn" class="btn-nav">Déconnexion</button>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <div class="mailbox-wrap">
+          <button id="mailbox-btn" class="mailbox-btn" title="Commandes" type="button">
+            ✉️<span id="mailbox-badge" class="mailbox-badge" style="display:none;"></span>
+          </button>
+          <div id="orders-dropdown" class="orders-dropdown" style="display:none;">
+            <div class="orders-dropdown-header">Commandes</div>
+            <div id="orders-list"></div>
+          </div>
+        </div>
+        <button id="logout-btn" class="btn-nav">Déconnexion</button>
+      </div>
     </div>
   </nav>
 
@@ -85,6 +96,83 @@
     document.getElementById('logout-btn').addEventListener('click', async () => {
       await fetch('/admin/logout', { method: 'POST' });
       window.location.href = '/admin-login.html';
+    });
+
+    // --- Commandes (boîte aux lettres + badge + liste) ---
+    const mailboxBtn = document.getElementById('mailbox-btn');
+    const mailboxBadge = document.getElementById('mailbox-badge');
+    const ordersDropdown = document.getElementById('orders-dropdown');
+    const ordersList = document.getElementById('orders-list');
+    let ordersCache = [];
+
+    function fmtAmount(cents) {
+      return (cents / 100).toFixed(2).replace('.', ',') + ' €';
+    }
+
+    function updateMailboxBadge() {
+      const count = ordersCache.filter((o) => !o.viewed).length;
+      mailboxBadge.style.display = count > 0 ? 'flex' : 'none';
+      mailboxBadge.textContent = count > 9 ? '9+' : String(count);
+    }
+
+    function renderOrders() {
+      if (!ordersCache.length) {
+        ordersList.innerHTML = '<div class="orders-empty">Aucune commande pour le moment.</div>';
+        return;
+      }
+      ordersList.innerHTML = ordersCache
+        .map(
+          (o) => `
+        <div class="order-row" data-id="${o.id}">
+          <div style="flex:1; min-width:0;">
+            <div class="order-row-info">${o.customerName || 'Nom non renseigné'} — ${fmtAmount(o.amount)}</div>
+            <div class="order-row-date" style="opacity:.8;">${o.customerEmail}</div>
+            <div class="order-row-date">${fmtDate(o.createdAt)}</div>
+            <div class="order-row-details">Référence : ${o.id}</div>
+          </div>
+          ${!o.viewed ? '<div class="order-row-dot"></div>' : ''}
+        </div>
+      `
+        )
+        .join('');
+
+      ordersList.querySelectorAll('.order-row').forEach((row) => {
+        row.addEventListener('click', async () => {
+          row.classList.toggle('expanded');
+          const id = row.getAttribute('data-id');
+          const order = ordersCache.find((o) => o.id === id);
+          if (order && !order.viewed) {
+            order.viewed = true;
+            const dot = row.querySelector('.order-row-dot');
+            if (dot) dot.remove();
+            updateMailboxBadge();
+            try {
+              await fetch(`/admin/orders/${encodeURIComponent(id)}/mark-viewed`, { method: 'POST' });
+            } catch (err) {}
+          }
+        });
+      });
+    }
+
+    async function loadOrders() {
+      try {
+        const res = await fetch('/admin/orders');
+        const data = await res.json();
+        ordersCache = data.orders;
+        updateMailboxBadge();
+        renderOrders();
+      } catch (err) {}
+    }
+    loadOrders();
+    setInterval(loadOrders, 20000); // détecte les nouvelles commandes toutes les 20s
+
+    mailboxBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = ordersDropdown.style.display === 'block';
+      ordersDropdown.style.display = isOpen ? 'none' : 'block';
+    });
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.mailbox-wrap')) ordersDropdown.style.display = 'none';
     });
 
     // --- Code promo ---

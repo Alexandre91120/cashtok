@@ -11,6 +11,7 @@ const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 const Stripe = require('stripe');
 const multer = require('multer');
+const PDFDocument = require('pdfkit');
 
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 const app = express();
@@ -26,11 +27,14 @@ const ADMIN_USERNAME = process.env.ADMIN_USERNAME || '';
 const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || '';
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || '';
 const SESSION_SECRET = process.env.SESSION_SECRET || '';
+// Adresse qui reçoit l'alerte + facture à chaque commande (peut différer de ADMIN_EMAIL, utilisée pour le code 2FA)
+const ORDER_ALERT_EMAIL = process.env.ORDER_ALERT_EMAIL || ADMIN_EMAIL;
 
 const DATA_DIR = path.join(__dirname, 'data');
 const PROMO_PATH = path.join(DATA_DIR, 'promo.json');
 const THEME_PATH = path.join(DATA_DIR, 'theme.json');
 const REVIEWS_PATH = path.join(DATA_DIR, 'reviews.json');
+const ORDERS_PATH = path.join(DATA_DIR, 'orders.json');
 const CONTENT_PATH = path.join(__dirname, 'public', 'content.json');
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
@@ -113,9 +117,19 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
     try {
+      recordOrder(session);
+    } catch (err) {
+      console.error("Erreur enregistrement de la commande:", err);
+    }
+    try {
       await sendReceiptEmail(session);
     } catch (err) {
       console.error('Erreur envoi du reçu email:', err);
+    }
+    try {
+      await sendAdminOrderAlert(session);
+    } catch (err) {
+      console.error("Erreur envoi de l'alerte commande admin:", err);
     }
   }
 
@@ -598,6 +612,39 @@ app.post('/submit-review', reviewLimiter, async (req, res) => {
 });
 
 // ============================================================
+// Commandes — historique + notifications admin (réservé à l'admin)
+// ============================================================
+function recordOrder(session) {
+  const orders = readJsonSafe(ORDERS_PATH, []);
+  orders.push({
+    id: session.id,
+    amount: session.amount_total,
+    customerEmail: session.customer_details?.email || 'inconnu',
+    customerName: session.customer_details?.name || '',
+    createdAt: Date.now(),
+    viewed: false,
+  });
+  // garde un historique raisonnable
+  const trimmed = orders.slice(-500);
+  fs.writeFileSync(ORDERS_PATH, JSON.stringify(trimmed, null, 2), 'utf-8');
+}
+
+app.get('/admin/orders', requireAdmin, (req, res) => {
+  const orders = readJsonSafe(ORDERS_PATH, []);
+  const sorted = [...orders].sort((a, b) => b.createdAt - a.createdAt);
+  res.json({ orders: sorted, unviewedCount: sorted.filter((o) => !o.viewed).length });
+});
+
+app.post('/admin/orders/:id/mark-viewed', requireAdmin, (req, res) => {
+  const orders = readJsonSafe(ORDERS_PATH, []);
+  const order = orders.find((o) => o.id === req.params.id);
+  if (!order) return res.status(404).json({ error: 'Commande introuvable.' });
+  order.viewed = true;
+  fs.writeFileSync(ORDERS_PATH, JSON.stringify(orders, null, 2), 'utf-8');
+  res.json({ ok: true });
+});
+
+// ============================================================
 // Paiement Stripe Checkout (carte + Apple Pay automatiques)
 // ============================================================
 app.post('/create-checkout-session', async (req, res) => {
@@ -607,6 +654,8 @@ app.post('/create-checkout-session', async (req, res) => {
       // Ne pas fixer payment_method_types : Stripe active automatiquement les moyens de
       // paiement les plus pertinents (carte, Apple Pay, Google Pay...) selon l'appareil du client.
       allow_promotion_codes: true,
+      // Force la collecte du nom/prénom + adresse du client, nécessaire pour la facture
+      billing_address_collection: 'required',
       line_items: [
         {
           price_data: {
@@ -627,6 +676,7 @@ app.post('/create-checkout-session', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 // ============================================================
 // Reçu email personnalisé après achat
@@ -661,6 +711,102 @@ async function sendReceiptEmail(session) {
         <p style="color:#888; font-size:12px; margin-top:24px;">CashTok — support : ${process.env.FROM_EMAIL}</p>
       </div>
     `,
+  });
+}
+
+// ============================================================
+// Facture PDF générée automatiquement à chaque commande
+// ============================================================
+function generateInvoicePdf(session) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 50 });
+    const chunks = [];
+    doc.on('data', (chunk) => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    const amount = (session.amount_total / 100).toFixed(2);
+    const date = new Date().toLocaleDateString('fr-FR', { year: 'numeric', month: 'long', day: 'numeric' });
+    const customerEmail = session.customer_details?.email || 'N/A';
+    const customerName = session.customer_details?.name || 'Non renseigné';
+
+    doc.fontSize(20).fillColor('#1e4fd8').text('CashTok');
+    doc.fontSize(10).fillColor('#666').text(process.env.FROM_EMAIL || '');
+    doc.moveDown(2);
+
+    doc.fontSize(16).fillColor('#000').text('Facture');
+    doc.moveDown();
+
+    doc.fontSize(10).fillColor('#333');
+    doc.text(`Référence : ${session.id}`);
+    doc.text(`Date : ${date}`);
+    doc.text(`Client : ${customerName}`);
+    doc.text(`Email : ${customerEmail}`);
+    doc.moveDown();
+
+    doc.fontSize(11).fillColor('#000');
+    const tableTop = doc.y;
+    doc.text('Description', 50, tableTop, { continued: true, width: 350 });
+    doc.text('Montant', { align: 'right' });
+    doc.moveTo(50, doc.y + 4).lineTo(545, doc.y + 4).stroke();
+    doc.moveDown(0.5);
+
+    doc.fontSize(10).fillColor('#333');
+    doc.text(PRODUCT_NAME, 50, doc.y, { continued: true, width: 350 });
+    doc.text(`${amount} €`, { align: 'right' });
+
+    doc.moveDown(2);
+    doc.fontSize(12).fillColor('#000').text(`Total payé : ${amount} €`, { align: 'right' });
+
+    doc.moveDown(2);
+    doc.fontSize(9).fillColor('#888').text('Paiement traité de manière sécurisée par Stripe.');
+
+    doc.end();
+  });
+}
+
+// ============================================================
+// Alerte admin — envoyée à chaque commande, avec la facture PDF jointe
+// ============================================================
+async function sendAdminOrderAlert(session) {
+  if (!ORDER_ALERT_EMAIL) return;
+
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: parseInt(process.env.SMTP_PORT || '587', 10),
+    secure: process.env.SMTP_PORT === '465',
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  });
+
+  const amount = (session.amount_total / 100).toFixed(2);
+  const customerEmail = session.customer_details?.email || 'inconnu';
+  const customerName = session.customer_details?.name || 'Non renseigné';
+  const pdfBuffer = await generateInvoicePdf(session);
+
+  await transporter.sendMail({
+    from: process.env.FROM_EMAIL,
+    to: ORDER_ALERT_EMAIL,
+    subject: `🛒 Nouvelle commande — ${amount} €`,
+    html: `
+      <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
+        <h2 style="color:#1e4fd8;">Nouvelle commande reçue !</h2>
+        <table style="width:100%; border-collapse: collapse; margin: 16px 0;">
+          <tr><td style="padding:8px 0;">Produit</td><td style="text-align:right;">${PRODUCT_NAME}</td></tr>
+          <tr><td style="padding:8px 0;">Montant</td><td style="text-align:right;">${amount} €</td></tr>
+          <tr><td style="padding:8px 0;">Client</td><td style="text-align:right;">${customerName}</td></tr>
+          <tr><td style="padding:8px 0;">Email</td><td style="text-align:right;">${customerEmail}</td></tr>
+          <tr><td style="padding:8px 0;">Référence</td><td style="text-align:right;">${session.id}</td></tr>
+        </table>
+        <p>La facture correspondante est jointe à cet email (PDF).</p>
+      </div>
+    `,
+    attachments: [
+      {
+        filename: `facture-${session.id}.pdf`,
+        content: pdfBuffer,
+        contentType: 'application/pdf',
+      },
+    ],
   });
 }
 

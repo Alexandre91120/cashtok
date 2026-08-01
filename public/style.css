@@ -375,6 +375,44 @@ body.edit-mode #edit-toggle { display: none; }
 .promo-status-box { background: var(--gray-100); border-radius: 12px; padding: 16px; font-size: 14px; }
 .promo-row { margin-bottom: 6px; }
 
+/* BOITE AUX LETTRES / COMMANDES */
+.mailbox-wrap { position: relative; }
+.mailbox-btn {
+  position: relative; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25);
+  color: var(--white); width: 40px; height: 40px; border-radius: 10px; font-size: 17px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.mailbox-btn:hover { background: rgba(255,255,255,0.22); }
+.mailbox-badge {
+  position: absolute; top: -5px; right: -5px; z-index: 2;
+  background: #dc2626; color: var(--white); border-radius: 999px;
+  min-width: 18px; height: 18px; font-size: 10px; font-weight: 800;
+  align-items: center; justify-content: center; padding: 0 4px;
+  border: 2px solid var(--blue-900);
+}
+.orders-dropdown {
+  position: absolute; top: calc(100% + 10px); right: 0; z-index: 200;
+  width: 340px; max-height: 420px; overflow-y: auto;
+  background: var(--white); border-radius: 14px; box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+  border: 1px solid var(--gray-300);
+}
+.orders-dropdown-header {
+  padding: 14px 18px; font-weight: 800; font-size: 14px;
+  border-bottom: 1px solid var(--gray-300); color: var(--gray-900);
+}
+.order-row {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;
+  padding: 12px 18px; border-bottom: 1px solid var(--gray-100); cursor: pointer;
+}
+.order-row:hover { background: var(--gray-100); }
+.order-row:last-child { border-bottom: none; }
+.order-row-info { font-size: 13px; font-weight: 700; color: var(--gray-900); }
+.order-row-date { font-size: 11px; color: var(--gray-600); margin-top: 2px; }
+.order-row-dot { width: 9px; height: 9px; border-radius: 50%; background: #dc2626; flex-shrink: 0; margin-top: 4px; }
+.order-row-details { display: none; font-size: 11px; color: var(--gray-600); margin-top: 6px; }
+.order-row.expanded .order-row-details { display: block; }
+.orders-empty { padding: 24px 18px; text-align: center; color: var(--gray-600); font-size: 13px; }
+
 /* BANDEAU PROMO */
 #promo-banner {
   display: none;

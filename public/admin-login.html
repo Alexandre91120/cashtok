@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Connexion admin — CashTok</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="logo" style="margin-bottom:24px;">Cash<span>Tok</span></div>
+
+      <div id="step-1">
+        <h1 class="auth-title">Connexion admin</h1>
+        <p class="auth-sub">Accès réservé à l'administrateur du site.</p>
+
+        <label>Nom d'utilisateur</label>
+        <input type="text" id="username" autocomplete="username" />
+
+        <label>Mot de passe</label>
+        <input type="password" id="password" autocomplete="current-password" />
+
+        <button id="login-btn" class="btn-primary" style="width:100%; margin-top:12px;">Se connecter</button>
+        <div id="login-error" class="auth-error"></div>
+      </div>
+
+      <div id="step-2" style="display:none;">
+        <h1 class="auth-title">Vérification</h1>
+        <p class="auth-sub">Un code à 6 chiffres a été envoyé à <strong id="masked-email"></strong></p>
+
+        <label>Code de vérification</label>
+        <input type="text" id="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" style="letter-spacing:8px; font-size:22px; text-align:center;" />
+
+        <button id="verify-btn" class="btn-primary" style="width:100%; margin-top:12px;">Vérifier</button>
+        <button id="resend-btn" class="btn-secondary" style="width:100%; margin-top:10px; color:var(--blue-800); border-color:var(--gray-300);">Renvoyer le code</button>
+        <div id="verify-error" class="auth-error"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const step1 = document.getElementById('step-1');
+    const step2 = document.getElementById('step-2');
+    const loginBtn = document.getElementById('login-btn');
+    const loginError = document.getElementById('login-error');
+    const verifyBtn = document.getElementById('verify-btn');
+    const verifyError = document.getElementById('verify-error');
+    const resendBtn = document.getElementById('resend-btn');
+    const maskedEmailEl = document.getElementById('masked-email');
+
+    loginBtn.addEventListener('click', async () => {
+      loginError.textContent = '';
+      loginBtn.disabled = true;
+      loginBtn.textContent = 'Connexion…';
+
+      try {
+        const res = await fetch('/admin/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: document.getElementById('username').value,
+            password: document.getElementById('password').value,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erreur de connexion');
+
+        maskedEmailEl.textContent = data.maskedEmail;
+        step1.style.display = 'none';
+        step2.style.display = 'block';
+        startResendCooldown(60);
+      } catch (err) {
+        loginError.textContent = err.message;
+      } finally {
+        loginBtn.disabled = false;
+        loginBtn.textContent = 'Se connecter';
+      }
+    });
+
+    verifyBtn.addEventListener('click', async () => {
+      verifyError.textContent = '';
+      verifyBtn.disabled = true;
+      verifyBtn.textContent = 'Vérification…';
+
+      try {
+        const res = await fetch('/admin/verify-2fa', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: document.getElementById('code').value }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Code incorrect');
+
+        window.location.href = '/admin.html';
+      } catch (err) {
+        verifyError.textContent = err.message;
+      } finally {
+        verifyBtn.disabled = false;
+        verifyBtn.textContent = 'Vérifier';
+      }
+    });
+
+    let cooldownInterval;
+    function startResendCooldown(seconds) {
+      let remaining = seconds;
+      resendBtn.disabled = true;
+      resendBtn.textContent = `Renvoyer le code (${remaining}s)`;
+      clearInterval(cooldownInterval);
+      cooldownInterval = setInterval(() => {
+        remaining -= 1;
+        if (remaining <= 0) {
+          clearInterval(cooldownInterval);
+          resendBtn.disabled = false;
+          resendBtn.textContent = 'Renvoyer le code';
+        } else {
+          resendBtn.textContent = `Renvoyer le code (${remaining}s)`;
+        }
+      }, 1000);
+    }
+
+    resendBtn.addEventListener('click', async () => {
+      verifyError.textContent = '';
+      try {
+        const res = await fetch('/admin/resend-2fa', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) {
+          if (data.secondsRemaining) startResendCooldown(data.secondsRemaining);
+          throw new Error(data.error || 'Erreur');
+        }
+        maskedEmailEl.textContent = data.maskedEmail;
+        startResendCooldown(60);
+      } catch (err) {
+        verifyError.textContent = err.message;
+      }
+    });
+  </script>
+</body>
+</html>

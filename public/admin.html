@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Tableau de bord admin — CashTok</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <nav class="navbar">
+    <div class="container">
+      <a href="/" class="logo">Cash<span>Tok</span></a>
+      <div class="nav-links">
+        <a href="/">Voir le site</a>
+      </div>
+      <button id="logout-btn" class="btn-nav">Déconnexion</button>
+    </div>
+  </nav>
+
+  <section>
+    <div class="container" style="max-width:760px;">
+      <h1 style="margin-bottom:8px;">Tableau de bord</h1>
+      <p style="color:var(--gray-600); margin-bottom:36px;">Gère ton code promo et l'apparence du site.</p>
+
+      <!-- CODE PROMO -->
+      <div class="admin-card">
+        <h2>Code promo (-20%, 24h)</h2>
+        <p class="admin-card-sub">Un seul code actif à la fois. Il expire automatiquement 24h après sa création, quoi qu'il arrive.</p>
+
+        <div id="promo-current" class="promo-status-box">Chargement…</div>
+
+        <div class="admin-row" style="margin-top:20px;">
+          <input type="text" id="promo-code-input" placeholder="Ex: PROMO20" maxlength="20" style="text-transform:uppercase;" />
+          <button id="promo-create-btn" class="btn-primary">Créer un nouveau code</button>
+        </div>
+        <div id="promo-error" class="auth-error"></div>
+      </div>
+
+      <!-- APPARENCE -->
+      <div class="admin-card">
+        <h2>Apparence du site</h2>
+        <p class="admin-card-sub">Change la couleur principale et la police utilisées sur tout le site.</p>
+
+        <label>Couleur principale</label>
+        <div class="admin-row">
+          <input type="color" id="theme-color" value="#1e4fd8" style="height:44px; width:70px; padding:2px;" />
+          <input type="text" id="theme-color-hex" value="#1e4fd8" style="max-width:140px;" />
+        </div>
+
+        <label style="margin-top:16px;">Police</label>
+        <select id="theme-font">
+          <option value="poppins">Poppins (style Monetix)</option>
+          <option value="moderne">Moderne (Segoe UI)</option>
+          <option value="classique">Classique (Georgia)</option>
+          <option value="elegant">Élégant (Trebuchet MS)</option>
+          <option value="technique">Technique (Courier New)</option>
+          <option value="clean">Clean (Verdana)</option>
+        </select>
+
+        <button id="theme-save-btn" class="btn-primary" style="margin-top:20px;">Appliquer</button>
+        <div id="theme-error" class="auth-error"></div>
+        <div id="theme-success" class="auth-success"></div>
+      </div>
+
+      <!-- TEXTES -->
+      <div class="admin-card">
+        <h2>Textes du site</h2>
+        <p class="admin-card-sub">Édite les textes directement sur la page d'accueil.</p>
+        <a href="/#produit" class="btn-primary" style="display:inline-block;">Ouvrir le mode édition</a>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    // --- Vérifie la session admin ---
+    (async () => {
+      const res = await fetch('/admin/session-status');
+      const data = await res.json();
+      if (!data.isAdmin) window.location.href = '/admin-login.html';
+    })();
+
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+      await fetch('/admin/logout', { method: 'POST' });
+      window.location.href = '/admin-login.html';
+    });
+
+    // --- Code promo ---
+    const promoBox = document.getElementById('promo-current');
+    const promoError = document.getElementById('promo-error');
+
+    function fmtDate(ts) {
+      return new Date(ts).toLocaleString('fr-FR');
+    }
+
+    async function loadPromo() {
+      const res = await fetch('/admin/promo');
+      const { promo } = await res.json();
+
+      if (!promo) {
+        promoBox.innerHTML = `<p>Aucun code promo créé pour le moment.</p>`;
+        return;
+      }
+
+      const status = promo.expired
+        ? `<span style="color:#b91c1c;">Expiré</span>`
+        : promo.active
+        ? `<span style="color:#15803d;">Actif</span>`
+        : `<span style="color:var(--gray-600);">Inactif</span>`;
+
+      promoBox.innerHTML = `
+        <div class="promo-row"><strong>Code :</strong> ${promo.code}</div>
+        <div class="promo-row"><strong>Statut :</strong> ${status}</div>
+        <div class="promo-row"><strong>Créé le :</strong> ${fmtDate(promo.createdAt)}</div>
+        <div class="promo-row"><strong>Expire le :</strong> ${fmtDate(promo.expiresAt)}</div>
+        ${
+          !promo.expired
+            ? `<button id="promo-toggle-btn" class="btn-primary" style="margin-top:12px;">${promo.active ? 'Désactiver' : 'Activer'}</button>`
+            : ''
+        }
+      `;
+
+      const toggleBtn = document.getElementById('promo-toggle-btn');
+      if (toggleBtn) {
+        toggleBtn.addEventListener('click', async () => {
+          toggleBtn.disabled = true;
+          try {
+            const res = await fetch('/admin/promo/toggle', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ active: !promo.active }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+            await loadPromo();
+          } catch (err) {
+            promoError.textContent = err.message;
+          } finally {
+            toggleBtn.disabled = false;
+          }
+        });
+      }
+    }
+    loadPromo();
+
+    document.getElementById('promo-create-btn').addEventListener('click', async () => {
+      promoError.textContent = '';
+      const code = document.getElementById('promo-code-input').value;
+      try {
+        const res = await fetch('/admin/promo/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        document.getElementById('promo-code-input').value = '';
+        await loadPromo();
+      } catch (err) {
+        promoError.textContent = err.message;
+      }
+    });
+
+    // --- Thème ---
+    const colorPicker = document.getElementById('theme-color');
+    const colorHex = document.getElementById('theme-color-hex');
+    const fontSelect = document.getElementById('theme-font');
+    const themeError = document.getElementById('theme-error');
+    const themeSuccess = document.getElementById('theme-success');
+
+    colorPicker.addEventListener('input', () => (colorHex.value = colorPicker.value));
+    colorHex.addEventListener('input', () => {
+      if (/^#[0-9a-fA-F]{6}$/.test(colorHex.value)) colorPicker.value = colorHex.value;
+    });
+
+    async function loadTheme() {
+      const res = await fetch('/theme.json');
+      const theme = await res.json();
+      colorPicker.value = theme.primaryColor;
+      colorHex.value = theme.primaryColor;
+      fontSelect.value = theme.font || 'moderne';
+    }
+    loadTheme();
+
+    document.getElementById('theme-save-btn').addEventListener('click', async () => {
+      themeError.textContent = '';
+      themeSuccess.textContent = '';
+      try {
+        const res = await fetch('/admin/theme', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ primaryColor: colorHex.value, font: fontSelect.value }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        themeSuccess.textContent = 'Appliqué ! Visible immédiatement sur le site.';
+      } catch (err) {
+        themeError.textContent = err.message;
+      }
+    });
+  </script>
+</body>
+</html>

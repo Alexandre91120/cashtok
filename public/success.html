@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Merci pour votre achat — CashTok</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <nav class="navbar">
+    <div class="container">
+      <a href="/" class="logo">Cash<span>Tok</span></a>
+      <div class="nav-links">
+        <a href="/#produit">Produit</a>
+        <a href="/#avis">Avis</a>
+        <a href="/#faq">FAQ</a>
+      </div>
+      <a href="/#produit" class="btn-nav">Acheter</a>
+    </div>
+  </nav>
+
+  <div class="ticker-wrap">
+    <div class="ticker-track">
+      <span>💳 Carte bancaire</span>
+      <span>🍏 Apple Pay</span>
+      <span>🔒 Paiement 100% sécurisé (Stripe)</span>
+      <span>⚡ Accès immédiat après achat</span>
+      <span>📧 Reçu automatique par email</span>
+      <span>🔁 Support réactif</span>
+      <span>💳 Carte bancaire</span>
+      <span>🍏 Apple Pay</span>
+      <span>🔒 Paiement 100% sécurisé (Stripe)</span>
+      <span>⚡ Accès immédiat après achat</span>
+      <span>📧 Reçu automatique par email</span>
+      <span>🔁 Support réactif</span>
+    </div>
+  </div>
+
+  <header class="hero" style="padding:100px 0;">
+    <div class="container">
+      <span class="badge">✓ Paiement confirmé</span>
+      <h1>Merci pour votre achat !</h1>
+      <p class="subtitle">Votre accès à la formation TikTok Shop vient d'être envoyé par email.</p>
+      <p class="subtitle" style="font-size:15px;">Un reçu a été envoyé automatiquement à votre adresse email.</p>
+      <div class="hero-cta">
+        <a href="/" class="btn-primary">Retour à l'accueil</a>
+      </div>
+    </div>
+  </header>
+
+  <section id="leave-review-section" style="display:none; background:var(--gray-100);">
+    <div class="container" style="max-width:520px;">
+      <div class="section-title">
+        <div class="eyebrow">Votre avis compte</div>
+        <h2>Comment s'est passé votre achat ?</h2>
+        <p>Il sera affiché publiquement sur la page d'accueil.</p>
+      </div>
+
+      <div class="admin-card">
+        <label>Votre nom (visible publiquement)</label>
+        <input type="text" id="review-name" maxlength="60" style="width:100%; margin-bottom:16px;" />
+
+        <label>Votre note</label>
+        <div id="review-stars" style="font-size:28px; margin-bottom:16px; cursor:pointer;">
+          <span data-star="1">☆</span><span data-star="2">☆</span><span data-star="3">☆</span><span data-star="4">☆</span><span data-star="5">☆</span>
+        </div>
+
+        <label>Votre avis</label>
+        <textarea id="review-comment" maxlength="500" rows="4" style="width:100%; padding:11px 14px; border-radius:10px; border:1px solid var(--gray-300); font-family:inherit; font-size:14px; margin-bottom:16px;"></textarea>
+
+        <button id="review-submit" class="btn-primary" style="width:100%;">Publier mon avis</button>
+        <div id="review-error" class="auth-error"></div>
+        <div id="review-success" class="auth-success"></div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-col">
+          <h5>À propos de CashTok</h5>
+          <p data-key="footer.about" class="footer-about-text">…</p>
+        </div>
+        <div class="footer-col">
+          <h5>Contact</h5>
+          <a href="mailto:contact" data-key="footer.contactEmail">…@cashtok…</a>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span data-key="footer.copyright">© … CashTok. Tous droits réservés.</span>
+        <span class="footer-legal-links">
+          <a href="mentions-legales.html">Mentions légales</a> · <a href="cgv.html">CGV</a> · <a href="confidentialite.html">Confidentialité</a>
+        </span>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    fetch('content.json?_=' + Date.now())
+      .then((r) => r.json())
+      .then((content) => {
+        document.querySelectorAll('[data-key]').forEach((el) => {
+          const key = el.getAttribute('data-key');
+          if (content[key] !== undefined) el.textContent = content[key];
+        });
+      });
+
+    function shade(hex, percent) {
+      const f = parseInt(hex.slice(1), 16);
+      const t = percent < 0 ? 0 : 255;
+      const p = Math.abs(percent);
+      const R = f >> 16, G = (f >> 8) & 0x00ff, B = f & 0x0000ff;
+      return '#' + (0x1000000 + (Math.round((t - R) * p) + R) * 0x10000 + (Math.round((t - G) * p) + G) * 0x100 + (Math.round((t - B) * p) + B)).toString(16).slice(1);
+    }
+    fetch('/theme.json?_=' + Date.now())
+      .then((r) => r.json())
+      .then((theme) => {
+        const root = document.documentElement.style;
+        root.setProperty('--blue-600', theme.primaryColor);
+        root.setProperty('--blue-500', shade(theme.primaryColor, 0.15));
+        root.setProperty('--blue-400', shade(theme.primaryColor, 0.3));
+        root.setProperty('--blue-800', shade(theme.primaryColor, -0.35));
+        root.setProperty('--blue-900', shade(theme.primaryColor, -0.55));
+        root.setProperty('--font-body', theme.fontFamily);
+      });
+
+    // --- Formulaire d'avis (visible seulement si on arrive d'un vrai paiement Stripe) ---
+    const sessionId = new URLSearchParams(window.location.search).get('session_id');
+    if (sessionId) {
+      document.getElementById('leave-review-section').style.display = 'block';
+
+      let selectedRating = 0;
+      const starEls = document.querySelectorAll('#review-stars span');
+      function renderStars(rating) {
+        starEls.forEach((el) => {
+          el.textContent = Number(el.getAttribute('data-star')) <= rating ? '★' : '☆';
+        });
+      }
+      starEls.forEach((el) => {
+        el.addEventListener('click', () => {
+          selectedRating = Number(el.getAttribute('data-star'));
+          renderStars(selectedRating);
+        });
+      });
+
+      document.getElementById('review-submit').addEventListener('click', async () => {
+        const errorBox = document.getElementById('review-error');
+        const successBox = document.getElementById('review-success');
+        errorBox.textContent = '';
+        successBox.textContent = '';
+
+        const name = document.getElementById('review-name').value.trim();
+        const comment = document.getElementById('review-comment').value.trim();
+
+        if (!name) return (errorBox.textContent = 'Merci de renseigner votre nom.');
+        if (!selectedRating) return (errorBox.textContent = 'Merci de choisir une note.');
+        if (!comment) return (errorBox.textContent = 'Merci de renseigner votre avis.');
+
+        const btn = document.getElementById('review-submit');
+        btn.disabled = true;
+        btn.textContent = 'Envoi…';
+
+        try {
+          const res = await fetch('/submit-review', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sessionId, name, rating: selectedRating, comment }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Erreur');
+
+          successBox.textContent = 'Merci pour votre avis !';
+          document.getElementById('review-name').disabled = true;
+          document.getElementById('review-comment').disabled = true;
+          btn.style.display = 'none';
+        } catch (err) {
+          errorBox.textContent = err.message;
+          btn.disabled = false;
+          btn.textContent = 'Publier mon avis';
+        }
+      });
+    }
+  </script>
+
+</body>
+</html>

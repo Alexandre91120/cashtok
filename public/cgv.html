@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Conditions Générales de Vente — CashTok</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <nav class="navbar">
+    <div class="container">
+      <a href="/" class="logo">Cash<span>Tok</span></a>
+      <div class="nav-links">
+        <a href="/#produit">Produit</a>
+        <a href="/#avis">Avis</a>
+        <a href="/#faq">FAQ</a>
+      </div>
+      <a href="/#produit" class="btn-nav">Acheter</a>
+    </div>
+  </nav>
+
+  <div class="ticker-wrap">
+    <div class="ticker-track">
+      <span>💳 Carte bancaire</span>
+      <span>🍏 Apple Pay</span>
+      <span>🔒 Paiement 100% sécurisé (Stripe)</span>
+      <span>⚡ Accès immédiat après achat</span>
+      <span>📧 Reçu automatique par email</span>
+      <span>🔁 Support réactif</span>
+      <span>💳 Carte bancaire</span>
+      <span>🍏 Apple Pay</span>
+      <span>🔒 Paiement 100% sécurisé (Stripe)</span>
+      <span>⚡ Accès immédiat après achat</span>
+      <span>📧 Reçu automatique par email</span>
+      <span>🔁 Support réactif</span>
+    </div>
+  </div>
+
+  <section>
+    <div class="container" style="max-width:760px; padding-top:60px; padding-bottom:60px;">
+      <h1 style="margin-bottom:24px;">Conditions Générales de Vente</h1>
+
+      <h4>Article 1 — Objet</h4>
+      <p>Les présentes conditions générales de vente régissent la vente du produit numérique « Formation TikTok Shop », proposé sur ce site par l'éditeur identifié dans les mentions légales. Toute commande implique l'acceptation pleine et entière des présentes CGV.</p>
+
+      <h4 style="margin-top:24px;">Article 2 — Prix</h4>
+      <p>Le prix de la formation est de 149,90 € TTC, payable en une seule fois. Aucun abonnement ni frais récurrent n'est associé à cet achat.</p>
+
+      <h4 style="margin-top:24px;">Article 3 — Paiement</h4>
+      <p>Le paiement est réalisé de manière sécurisée via Stripe (carte bancaire, Apple Pay). Le vendeur n'a à aucun moment accès ni ne conserve les coordonnées bancaires du client.</p>
+
+      <h4 style="margin-top:24px;">Article 4 — Droit de rétractation</h4>
+      <p>Conformément à l'article L221-28 du Code de la consommation, le droit de rétractation ne peut être exercé pour la fourniture d'un contenu numérique non fourni sur un support matériel dont l'exécution a commencé après accord préalable exprès du consommateur, qui a renoncé à son droit de rétractation. En validant sa commande, le client reconnaît demander l'accès immédiat au contenu et renoncer expressément à son droit de rétractation dès la mise à disposition de l'accès.</p>
+
+      <h4 style="margin-top:24px;">Article 5 — Livraison / accès au produit</h4>
+      <p>Après validation du paiement, un email contenant les liens d'accès à la formation (vidéos et fichiers PDF) est envoyé automatiquement à l'adresse email renseignée lors de l'achat. L'accès est valable sans limitation de durée.</p>
+
+      <h4 style="margin-top:24px;">Article 6 — Réclamations</h4>
+      <p>Pour toute question ou réclamation concernant votre achat ou l'accès au contenu, vous pouvez contacter l'éditeur à l'adresse email indiquée dans les mentions légales et en pied de page. Une réponse est apportée sous 48h ouvrées.</p>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-col">
+          <h5>À propos de CashTok</h5>
+          <p data-key="footer.about" class="footer-about-text">…</p>
+        </div>
+        <div class="footer-col">
+          <h5>Contact</h5>
+          <a href="mailto:contact" data-key="footer.contactEmail">…@cashtok…</a>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span data-key="footer.copyright">© … CashTok. Tous droits réservés.</span>
+        <span class="footer-legal-links">
+          <a href="mentions-legales.html">Mentions légales</a> · <a href="cgv.html">CGV</a> · <a href="confidentialite.html">Confidentialité</a>
+        </span>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    fetch('content.json?_=' + Date.now())
+      .then((r) => r.json())
+      .then((content) => {
+        document.querySelectorAll('[data-key]').forEach((el) => {
+          const key = el.getAttribute('data-key');
+          if (content[key] !== undefined) el.textContent = content[key];
+        });
+      });
+
+    function shade(hex, percent) {
+      const f = parseInt(hex.slice(1), 16);
+      const t = percent < 0 ? 0 : 255;
+      const p = Math.abs(percent);
+      const R = f >> 16, G = (f >> 8) & 0x00ff, B = f & 0x0000ff;
+      return '#' + (0x1000000 + (Math.round((t - R) * p) + R) * 0x10000 + (Math.round((t - G) * p) + G) * 0x100 + (Math.round((t - B) * p) + B)).toString(16).slice(1);
+    }
+    fetch('/theme.json?_=' + Date.now())
+      .then((r) => r.json())
+      .then((theme) => {
+        const root = document.documentElement.style;
+        root.setProperty('--blue-600', theme.primaryColor);
+        root.setProperty('--blue-500', shade(theme.primaryColor, 0.15));
+        root.setProperty('--blue-400', shade(theme.primaryColor, 0.3));
+        root.setProperty('--blue-800', shade(theme.primaryColor, -0.35));
+        root.setProperty('--blue-900', shade(theme.primaryColor, -0.55));
+        root.setProperty('--font-body', theme.fontFamily);
+      });
+  </script>
+
+</body>
+</html>

@@ -41,13 +41,21 @@
 
       <!-- CODE PROMO -->
       <div class="admin-card">
-        <h2>Code promo (-20%, 24h)</h2>
-        <p class="admin-card-sub">Un seul code actif à la fois. Il expire automatiquement 24h après sa création, quoi qu'il arrive.</p>
+        <h2>Code promo</h2>
+        <p class="admin-card-sub">Un seul code actif à la fois. Choisis le code, la réduction et sa durée de validité — il expire automatiquement une fois ce délai passé, quoi qu'il arrive.</p>
 
         <div id="promo-current" class="promo-status-box">Chargement…</div>
 
-        <div class="admin-row" style="margin-top:20px;">
-          <input type="text" id="promo-code-input" placeholder="Ex: PROMO20" maxlength="20" style="text-transform:uppercase;" />
+        <div class="admin-row" style="margin-top:20px; flex-wrap:wrap;">
+          <input type="text" id="promo-code-input" placeholder="Code (ex: PROMO20)" maxlength="20" style="text-transform:uppercase; flex:1; min-width:140px;" />
+          <div style="display:flex; flex-direction:column; gap:4px;">
+            <label style="margin:0; font-size:11px;">Réduction (%)</label>
+            <input type="number" id="promo-percent-input" min="1" max="99" value="20" style="width:100px;" />
+          </div>
+          <div style="display:flex; flex-direction:column; gap:4px;">
+            <label style="margin:0; font-size:11px;">Durée (heures)</label>
+            <input type="number" id="promo-duration-input" min="1" max="720" value="24" style="width:120px;" />
+          </div>
           <button id="promo-create-btn" class="btn-primary">Créer un nouveau code</button>
         </div>
         <div id="promo-error" class="auth-error"></div>
@@ -213,12 +221,16 @@
 
       promoBox.innerHTML = `
         <div class="promo-row"><strong>Code :</strong> ${promo.code}</div>
+        <div class="promo-row"><strong>Réduction :</strong> -${promo.percentOff ?? 20}%</div>
         <div class="promo-row"><strong>Statut :</strong> ${status}</div>
         <div class="promo-row"><strong>Créé le :</strong> ${fmtDate(promo.createdAt)}</div>
-        <div class="promo-row"><strong>Expire le :</strong> ${fmtDate(promo.expiresAt)}</div>
+        <div class="promo-row"><strong>Expire le :</strong> ${fmtDate(promo.expiresAt)} (${promo.durationHours ?? 24}h de validité)</div>
         ${
           !promo.expired
-            ? `<button id="promo-toggle-btn" class="btn-primary" style="margin-top:12px;">${promo.active ? 'Désactiver' : 'Activer'}</button>`
+            ? `<div style="display:flex; align-items:center; gap:10px; margin-top:14px;">
+                 <button id="promo-toggle-btn" class="promo-toggle-btn ${promo.active ? 'is-active' : 'is-inactive'}" title="${promo.active ? 'Actif — cliquer pour désactiver' : 'Inactif — cliquer pour activer'}"></button>
+                 <span style="font-size:13px; color:var(--gray-600);">${promo.active ? 'Actif — cliquer pour désactiver' : 'Inactif — cliquer pour activer'}</span>
+               </div>`
             : ''
         }
       `;
@@ -249,11 +261,13 @@
     document.getElementById('promo-create-btn').addEventListener('click', async () => {
       promoError.textContent = '';
       const code = document.getElementById('promo-code-input').value;
+      const percentOff = document.getElementById('promo-percent-input').value;
+      const durationHours = document.getElementById('promo-duration-input').value;
       try {
         const res = await fetch('/admin/promo/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code }),
+          body: JSON.stringify({ code, percentOff, durationHours }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);

@@ -478,10 +478,20 @@ app.get('/admin/promo', requireAdmin, (req, res) => {
 
 app.post('/admin/promo/create', requireAdmin, async (req, res) => {
   try {
-    let { code } = req.body || {};
+    let { code, percentOff, durationHours } = req.body || {};
     code = String(code || '').toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 20);
     if (code.length < 3) {
       return res.status(400).json({ error: 'Le code doit contenir au moins 3 caractères (lettres/chiffres).' });
+    }
+
+    const percent = Math.round(Number(percentOff));
+    if (!Number.isInteger(percent) || percent < 1 || percent > 99) {
+      return res.status(400).json({ error: 'Le pourcentage de réduction doit être un nombre entre 1 et 99.' });
+    }
+
+    const hours = Math.round(Number(durationHours));
+    if (!Number.isInteger(hours) || hours < 1 || hours > 720) {
+      return res.status(400).json({ error: 'La durée doit être un nombre entre 1 et 720 heures (30 jours max).' });
     }
 
     // Désactive l'ancien code s'il existe encore
@@ -494,8 +504,8 @@ app.post('/admin/promo/create', requireAdmin, async (req, res) => {
       }
     }
 
-    const coupon = await stripe.coupons.create({ percent_off: 20, duration: 'once' });
-    const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+    const coupon = await stripe.coupons.create({ percent_off: percent, duration: 'once' });
+    const expiresAt = Date.now() + hours * 60 * 60 * 1000;
     const promotionCode = await stripe.promotionCodes.create({
       coupon: coupon.id,
       code,
@@ -510,6 +520,8 @@ app.post('/admin/promo/create', requireAdmin, async (req, res) => {
       active: false,
       createdAt: Date.now(),
       expiresAt,
+      percentOff: percent,
+      durationHours: hours,
     };
     fs.writeFileSync(PROMO_PATH, JSON.stringify(record, null, 2), 'utf-8');
     res.json({ ok: true, promo: record });

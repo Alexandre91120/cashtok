@@ -82,6 +82,13 @@
         <p class="admin-card-sub">Édite les textes directement sur la page d'accueil.</p>
         <a href="/#produit" class="btn-primary" style="display:inline-block;">Ouvrir le mode édition</a>
       </div>
+
+      <!-- DIAGNOSTIC CONFIGURATION -->
+      <div class="admin-card">
+        <h2>État de la configuration</h2>
+        <p class="admin-card-sub">Vérifie en un coup d'œil ce qui est bien configuré côté serveur (aucune valeur secrète affichée).</p>
+        <div id="config-status-box">Chargement…</div>
+      </div>
     </div>
   </section>
 
@@ -291,6 +298,34 @@
         themeError.textContent = err.message;
       }
     });
+
+    // --- Diagnostic de configuration ---
+    async function loadConfigStatus() {
+      const box = document.getElementById('config-status-box');
+      try {
+        const status = await fetch('/admin/config-status').then((r) => r.json());
+        const labels = {
+          stripeSecretKey: 'Clé secrète Stripe',
+          stripeWebhookSecret: 'Webhook Stripe',
+          smtp: 'Envoi d\'emails (SMTP)',
+          cloudinary: 'Stockage d\'images (Cloudinary)',
+          productDeliveryUrl: 'Lien de livraison produit',
+          orderAlertEmail: 'Email d\'alerte commande',
+          nodeEnvProduction: 'Mode production (HTTPS)',
+        };
+        box.innerHTML = Object.entries(labels)
+          .map(([key, label]) => {
+            const ok = status[key];
+            const icon = ok ? '✅' : '❌';
+            const color = ok ? '#15803d' : '#b91c1c';
+            return `<div class="promo-row"><span style="color:${color};">${icon}</span> ${label}</div>`;
+          })
+          .join('');
+      } catch (err) {
+        box.innerHTML = '<p style="color:#b91c1c;">Impossible de charger le diagnostic.</p>';
+      }
+    }
+    loadConfigStatus();
   </script>
 </body>
 </html>

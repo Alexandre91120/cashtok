@@ -612,6 +612,25 @@ app.post('/submit-review', reviewLimiter, async (req, res) => {
 });
 
 // ============================================================
+// Diagnostic de configuration (réservé à l'admin, aucune valeur exposée)
+// ============================================================
+app.get('/admin/config-status', requireAdmin, (req, res) => {
+  const check = (name) => {
+    const v = process.env[name];
+    return !!v && v.trim() !== '' && !v.includes('...');
+  };
+  res.json({
+    stripeSecretKey: check('STRIPE_SECRET_KEY'),
+    stripeWebhookSecret: check('STRIPE_WEBHOOK_SECRET'),
+    smtp: check('SMTP_HOST') && check('SMTP_USER') && check('SMTP_PASS'),
+    cloudinary: check('CLOUDINARY_CLOUD_NAME') && check('CLOUDINARY_API_KEY') && check('CLOUDINARY_API_SECRET'),
+    productDeliveryUrl: check('PRODUCT_DELIVERY_URL') && !process.env.PRODUCT_DELIVERY_URL.includes('A-REMPLACER'),
+    orderAlertEmail: check('ORDER_ALERT_EMAIL'),
+    nodeEnvProduction: process.env.NODE_ENV === 'production',
+  });
+});
+
+// ============================================================
 // Commandes — historique + notifications admin (réservé à l'admin)
 // ============================================================
 function recordOrder(session) {

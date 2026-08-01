@@ -15,6 +15,7 @@
   <div id="promo-banner"></div>
 
   <nav class="navbar">
+    <a href="/admin-login.html" class="admin-tab-link" title="Connexion admin">Admin</a>
     <div class="container">
       <div class="logo">Cash<span>Tok</span></div>
       <div class="nav-links">
@@ -214,11 +215,14 @@
       const img = document.getElementById('product-image');
       const placeholder = document.getElementById('product-image-placeholder');
       const deleteBtn = document.getElementById('product-image-delete');
+      // Le bouton supprimer ne doit être visible/cliquable que pour l'admin en mode édition,
+      // jamais pour un visiteur normal (même si une image est présente).
+      const isAdminEditing = typeof editing !== 'undefined' && editing;
       if (url) {
         img.src = url;
         img.style.display = 'block';
         placeholder.style.display = 'none';
-        deleteBtn.style.display = 'flex';
+        deleteBtn.style.display = isAdminEditing ? 'flex' : 'none';
       } else {
         img.removeAttribute('src');
         img.style.display = 'none';
@@ -473,6 +477,7 @@
       document.body.classList.toggle('edit-mode', on);
       editBar.style.display = on ? 'flex' : 'none';
       document.getElementById('product-image-slot').classList.toggle('editable-active', on);
+      renderImage(currentContent['product.image'] || ''); // met à jour la visibilité du bouton supprimer
       if (on) {
         historyStack = [captureSnapshot()];
         historyIndex = 0;

@@ -32,10 +32,8 @@ const PROMO_PATH = path.join(DATA_DIR, 'promo.json');
 const THEME_PATH = path.join(DATA_DIR, 'theme.json');
 const REVIEWS_PATH = path.join(DATA_DIR, 'reviews.json');
 const CONTENT_PATH = path.join(__dirname, 'public', 'content.json');
-const UPLOADS_DIR = path.join(__dirname, 'public', 'uploads');
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
-if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 // ============================================================
 // Sécurité de base
@@ -336,8 +334,16 @@ app.post('/save-content', requireAdmin, (req, res) => {
 });
 
 // ============================================================
-// Upload d'images (mode édition visuel)
+// Upload d'images (mode édition visuel) — stocké sur Cloudinary
+// (le disque de Render n'est pas persistant entre deux déploiements)
 // ============================================================
+const cloudinary = require('cloudinary').v2;
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
 const ALLOWED_IMAGE_TYPES = {
   'image/jpeg': '.jpg',
   'image/png': '.png',
@@ -346,14 +352,7 @@ const ALLOWED_IMAGE_TYPES = {
 };
 
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => cb(null, UPLOADS_DIR),
-    filename: (req, file, cb) => {
-      // Nom de fichier généré côté serveur (jamais basé sur le nom d'origine fourni par le client)
-      const ext = ALLOWED_IMAGE_TYPES[file.mimetype];
-      cb(null, `${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`);
-    },
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5 Mo
   fileFilter: (req, file, cb) => {
     if (!ALLOWED_IMAGE_TYPES[file.mimetype]) {
@@ -363,6 +362,11 @@ const upload = multer({
   },
 });
 
+function extractCloudinaryPublicId(url) {
+  const match = String(url || '').match(/\/upload\/(?:v\d+\/)?(.+)\.[a-zA-Z0-9]+(?:\?.*)?$/);
+  return match ? match[1] : null;
+}
+
 app.post('/admin/upload-image', requireAdmin, (req, res) => {
   upload.single('image')(req, res, (err) => {
     if (err) {
@@ -371,22 +375,39 @@ app.post('/admin/upload-image', requireAdmin, (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'Aucun fichier reçu.' });
     }
-    res.json({ url: `/uploads/${req.file.filename}` });
+    if (!process.env.CLOUDINARY_CLOUD_NAME) {
+      return res.status(500).json({ error: "Stockage d'images non configuré (variables CLOUDINARY_* manquantes)." });
+    }
+
+    const stream = cloudinary.uploader.upload_stream(
+      { folder: 'cashtok', resource_type: 'image' },
+      (error, result) => {
+        if (error) {
+          console.error('Erreur upload Cloudinary:', error);
+          return res.status(500).json({ error: "Échec de l'upload vers le stockage d'images." });
+        }
+        res.json({ url: result.secure_url });
+      }
+    );
+    stream.end(req.file.buffer);
   });
 });
 
-app.delete('/admin/upload-image', requireAdmin, (req, res) => {
+app.delete('/admin/upload-image', requireAdmin, async (req, res) => {
   const { url } = req.body || {};
-  if (typeof url !== 'string' || !url.startsWith('/uploads/')) {
+  if (typeof url !== 'string' || !url.includes('res.cloudinary.com')) {
     return res.status(400).json({ error: 'URL invalide.' });
   }
-  // Empêche toute tentative de sortir du dossier uploads (../)
-  const filename = path.basename(url);
-  const filePath = path.join(UPLOADS_DIR, filename);
-  if (!filePath.startsWith(UPLOADS_DIR)) {
-    return res.status(400).json({ error: 'URL invalide.' });
+
+  const publicId = extractCloudinaryPublicId(url);
+  if (publicId) {
+    try {
+      await cloudinary.uploader.destroy(publicId);
+    } catch (err) {
+      console.warn('Suppression Cloudinary échouée (image déjà supprimée ?):', err.message);
+    }
   }
-  fs.unlink(filePath, () => res.json({ ok: true })); // on répond ok même si le fichier n'existait déjà plus
+  res.json({ ok: true });
 });
 
 // ============================================================

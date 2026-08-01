@@ -124,13 +124,16 @@
         .map(
           (o) => `
         <div class="order-row" data-id="${o.id}">
+          <div class="order-row-icon-wrap">
+            <span class="order-row-icon">🧾</span>
+            ${!o.viewed ? '<span class="order-row-icon-dot"></span>' : ''}
+          </div>
           <div style="flex:1; min-width:0;">
             <div class="order-row-info">${o.customerName || 'Nom non renseigné'} — ${fmtAmount(o.amount)}</div>
             <div class="order-row-date" style="opacity:.8;">${o.customerEmail}</div>
             <div class="order-row-date">${fmtDate(o.createdAt)}</div>
             <div class="order-row-details">Référence : ${o.id}</div>
           </div>
-          ${!o.viewed ? '<div class="order-row-dot"></div>' : ''}
         </div>
       `
         )
@@ -143,7 +146,7 @@
           const order = ordersCache.find((o) => o.id === id);
           if (order && !order.viewed) {
             order.viewed = true;
-            const dot = row.querySelector('.order-row-dot');
+            const dot = row.querySelector('.order-row-icon-dot');
             if (dot) dot.remove();
             updateMailboxBadge();
             try {

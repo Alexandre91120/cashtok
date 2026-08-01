@@ -93,14 +93,14 @@ img { max-width: 100%; display: block; }
   position: absolute; inset: 0;
   background: radial-gradient(circle at 80% 20%, rgba(255,255,255,0.15), transparent 60%);
 }
-.hero .container { position: relative; z-index: 1; }
+.hero .container { position: relative; z-index: 1; max-width: 1300px; }
 .badge {
   display: inline-block; background: rgba(255,255,255,0.15);
   border: 1px solid rgba(255,255,255,0.3);
   padding: 6px 16px; border-radius: 999px; font-size: 13px; font-weight: 600;
   margin-bottom: 24px;
 }
-.hero h1 { font-size: 52px; font-weight: 700; max-width: 780px; margin: 0 auto 20px; letter-spacing: -1px; }
+.hero h1 { font-size: 54px; font-weight: 700; max-width: 1250px; margin: 0 auto 20px; letter-spacing: -1px; white-space: pre-line; }
 .hero p.subtitle { font-size: 18px; font-weight: 400; color: var(--gray-300); max-width: 600px; margin: 0 auto 36px; }
 .hero-cta { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
 
@@ -408,7 +408,16 @@ body.edit-mode #edit-toggle { display: none; }
 .order-row:last-child { border-bottom: none; }
 .order-row-info { font-size: 13px; font-weight: 700; color: var(--gray-900); }
 .order-row-date { font-size: 11px; color: var(--gray-600); margin-top: 2px; }
-.order-row-dot { width: 9px; height: 9px; border-radius: 50%; background: #dc2626; flex-shrink: 0; margin-top: 4px; }
+.order-row-icon-wrap { position: relative; flex-shrink: 0; width: 34px; height: 34px; }
+.order-row-icon {
+  width: 34px; height: 34px; border-radius: 9px; background: var(--gray-100);
+  display: flex; align-items: center; justify-content: center; font-size: 15px;
+}
+.order-row-icon-dot {
+  position: absolute; top: -3px; right: -3px; z-index: 2;
+  width: 11px; height: 11px; border-radius: 50%; background: #dc2626;
+  border: 2px solid var(--white);
+}
 .order-row-details { display: none; font-size: 11px; color: var(--gray-600); margin-top: 6px; }
 .order-row.expanded .order-row-details { display: block; }
 .orders-empty { padding: 24px 18px; text-align: center; color: var(--gray-600); font-size: 13px; }

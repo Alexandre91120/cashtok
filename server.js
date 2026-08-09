@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const express = require('express');
 const session = require('express-session');
 const helmet = require('helmet');
@@ -39,6 +39,67 @@ const ORDERS_PATH = path.join(DATA_DIR, 'orders.json');
 const CONTENT_PATH = path.join(__dirname, 'public', 'content.json');
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
+
+function readJsonSafe(filePath, fallback) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+  } catch {
+    return fallback;
+  }
+}
+
+// ============================================================
+// Persistance — Upstash Redis (le disque de Render est effacé à chaque
+// déploiement ; sans ça, avis, commandes, code promo, thème et textes
+// disparaissent à chaque mise à jour du site). Si Redis n'est pas
+// configuré (dev local par exemple), on retombe sur les fichiers locaux.
+// ============================================================
+const { Redis } = require('@upstash/redis');
+const redis =
+  process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
+    ? new Redis({ url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN })
+    : null;
+
+const LOCAL_FALLBACK_PATHS = {
+  promo: PROMO_PATH,
+  theme: THEME_PATH,
+  reviews: REVIEWS_PATH,
+  gallery: GALLERY_PATH,
+  orders: ORDERS_PATH,
+  content: CONTENT_PATH,
+};
+
+async function loadState(key, fallback) {
+  if (redis) {
+    try {
+      const val = await redis.get(key);
+      if (val !== null && val !== undefined) return val;
+    } catch (err) {
+      console.error(`Erreur lecture Redis (${key}):`, err.message);
+    }
+  }
+  const localPath = LOCAL_FALLBACK_PATHS[key];
+  return localPath ? readJsonSafe(localPath, fallback) : fallback;
+}
+
+async function saveState(key, data) {
+  if (redis) {
+    try {
+      await redis.set(key, data);
+    } catch (err) {
+      console.error(`Erreur écriture Redis (${key}):`, err.message);
+    }
+  }
+  const localPath = LOCAL_FALLBACK_PATHS[key];
+  if (localPath) {
+    try {
+      fs.writeFileSync(localPath, JSON.stringify(data, null, 2), 'utf-8');
+    } catch (err) {
+      // Sur Render, ce fichier ne survivra pas au prochain déploiement de toute façon ;
+      // Redis (si configuré) reste la source de vérité durable.
+    }
+  }
+}
 
 // ============================================================
 // Sécurité de base
@@ -118,7 +179,7 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
     try {
-      recordOrder(session);
+      await recordOrder(session);
     } catch (err) {
       console.error("Erreur enregistrement de la commande:", err);
     }
@@ -138,6 +199,15 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
 });
 
 app.use(express.json());
+
+// Doit être déclaré AVANT express.static : sinon, comme un fichier physique
+// public/content.json existe, le serveur de fichiers statiques le servirait
+// directement sans jamais passer par Redis (donc sans les dernières modifs).
+app.get('/content.json', async (req, res) => {
+  const content = await loadState('content', {});
+  res.json(content);
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ============================================================
@@ -338,9 +408,9 @@ function parseCookie(req, name) {
 // ============================================================
 // Contenu du site (textes modifiables visuellement)
 // ============================================================
-app.post('/save-content', requireAdmin, (req, res) => {
+app.post('/save-content', requireAdmin, async (req, res) => {
   try {
-    fs.writeFileSync(CONTENT_PATH, JSON.stringify(req.body, null, 2), 'utf-8');
+    await saveState('content', req.body);
     res.json({ ok: true });
   } catch (err) {
     console.error('Erreur écriture content.json:', err);
@@ -430,13 +500,13 @@ app.delete('/admin/upload-image', requireAdmin, async (req, res) => {
 // ============================================================
 const GALLERY_MAX_IMAGES = 20;
 
-app.get('/gallery.json', (req, res) => {
-  const images = readJsonSafe(GALLERY_PATH, []);
+app.get('/gallery.json', async (req, res) => {
+  const images = await loadState('gallery', []);
   res.json({ images });
 });
 
 app.post('/admin/gallery/add', requireAdmin, (req, res) => {
-  upload.single('image')(req, res, (err) => {
+  upload.single('image')(req, res, async (err) => {
     if (err) {
       return res.status(400).json({ error: err.message || "Échec de l'upload." });
     }
@@ -447,20 +517,20 @@ app.post('/admin/gallery/add', requireAdmin, (req, res) => {
       return res.status(500).json({ error: "Stockage d'images non configuré (variables CLOUDINARY_* manquantes)." });
     }
 
-    const images = readJsonSafe(GALLERY_PATH, []);
+    const images = await loadState('gallery', []);
     if (images.length >= GALLERY_MAX_IMAGES) {
       return res.status(400).json({ error: `Maximum ${GALLERY_MAX_IMAGES} images dans la galerie. Supprimes-en une avant d'en ajouter une nouvelle.` });
     }
 
     const stream = cloudinary.uploader.upload_stream(
       { folder: 'cashtok/gallery', resource_type: 'image' },
-      (error, result) => {
+      async (error, result) => {
         if (error) {
           console.error('Erreur upload Cloudinary (galerie):', error);
           return res.status(500).json({ error: "Échec de l'upload vers le stockage d'images." });
         }
         images.push(result.secure_url);
-        fs.writeFileSync(GALLERY_PATH, JSON.stringify(images, null, 2), 'utf-8');
+        await saveState('gallery', images);
         res.json({ ok: true, images });
       }
     );
@@ -474,13 +544,13 @@ app.post('/admin/gallery/remove', requireAdmin, async (req, res) => {
     return res.status(400).json({ error: 'URL invalide.' });
   }
 
-  const images = readJsonSafe(GALLERY_PATH, []);
+  const images = await loadState('gallery', []);
   const idx = images.indexOf(url);
   if (idx === -1) {
     return res.status(404).json({ error: 'Image introuvable dans la galerie.' });
   }
   images.splice(idx, 1);
-  fs.writeFileSync(GALLERY_PATH, JSON.stringify(images, null, 2), 'utf-8');
+  await saveState('gallery', images);
 
   const publicId = extractCloudinaryPublicId(url);
   if (publicId) {
@@ -505,20 +575,12 @@ const FONT_PRESETS = {
   clean: "Verdana, Geneva, sans-serif",
 };
 
-function readJsonSafe(filePath, fallback) {
-  try {
-    return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-  } catch {
-    return fallback;
-  }
-}
-
-app.get('/theme.json', (req, res) => {
-  const theme = readJsonSafe(THEME_PATH, { primaryColor: '#1e4fd8', font: 'poppins' });
+app.get('/theme.json', async (req, res) => {
+  const theme = await loadState('theme', { primaryColor: '#1e4fd8', font: 'poppins' });
   res.json({ ...theme, fontFamily: FONT_PRESETS[theme.font] || FONT_PRESETS.poppins, fontOptions: Object.keys(FONT_PRESETS) });
 });
 
-app.post('/admin/theme', requireAdmin, (req, res) => {
+app.post('/admin/theme', requireAdmin, async (req, res) => {
   const { primaryColor, font } = req.body || {};
   if (!/^#[0-9a-fA-F]{6}$/.test(primaryColor || '')) {
     return res.status(400).json({ error: 'Couleur invalide (format hexadécimal attendu, ex: #1e4fd8).' });
@@ -526,21 +588,21 @@ app.post('/admin/theme', requireAdmin, (req, res) => {
   if (!FONT_PRESETS[font]) {
     return res.status(400).json({ error: 'Police invalide.' });
   }
-  fs.writeFileSync(THEME_PATH, JSON.stringify({ primaryColor, font }, null, 2), 'utf-8');
+  await saveState('theme', { primaryColor, font });
   res.json({ ok: true });
 });
 
 // ============================================================
 // Codes promo (-20%, 24h, gérés via Stripe Promotion Codes)
 // ============================================================
-app.get('/promo-status', (req, res) => {
-  const promo = readJsonSafe(PROMO_PATH, null);
+app.get('/promo-status', async (req, res) => {
+  const promo = await loadState('promo', null);
   const active = !!(promo && promo.active && Date.now() < promo.expiresAt);
   res.json({ active });
 });
 
-app.get('/admin/promo', requireAdmin, (req, res) => {
-  const promo = readJsonSafe(PROMO_PATH, null);
+app.get('/admin/promo', requireAdmin, async (req, res) => {
+  const promo = await loadState('promo', null);
   if (!promo) return res.json({ promo: null });
   res.json({ promo: { ...promo, expired: Date.now() > promo.expiresAt } });
 });
@@ -564,7 +626,7 @@ app.post('/admin/promo/create', requireAdmin, async (req, res) => {
     }
 
     // Désactive l'ancien code s'il existe encore
-    const existing = readJsonSafe(PROMO_PATH, null);
+    const existing = await loadState('promo', null);
     if (existing && existing.promotionCodeId) {
       try {
         await stripe.promotionCodes.update(existing.promotionCodeId, { active: false });
@@ -592,7 +654,7 @@ app.post('/admin/promo/create', requireAdmin, async (req, res) => {
       percentOff: percent,
       durationHours: hours,
     };
-    fs.writeFileSync(PROMO_PATH, JSON.stringify(record, null, 2), 'utf-8');
+    await saveState('promo', record);
     res.json({ ok: true, promo: record });
   } catch (err) {
     console.error('Erreur création code promo:', err);
@@ -603,7 +665,7 @@ app.post('/admin/promo/create', requireAdmin, async (req, res) => {
 app.post('/admin/promo/toggle', requireAdmin, async (req, res) => {
   try {
     const { active } = req.body || {};
-    const promo = readJsonSafe(PROMO_PATH, null);
+    const promo = await loadState('promo', null);
     if (!promo) return res.status(400).json({ error: 'Aucun code promo créé.' });
     if (Date.now() > promo.expiresAt) {
       return res.status(400).json({ error: 'Ce code a expiré (24h écoulées). Crée-en un nouveau.' });
@@ -611,7 +673,7 @@ app.post('/admin/promo/toggle', requireAdmin, async (req, res) => {
 
     await stripe.promotionCodes.update(promo.promotionCodeId, { active: !!active });
     promo.active = !!active;
-    fs.writeFileSync(PROMO_PATH, JSON.stringify(promo, null, 2), 'utf-8');
+    await saveState('promo', promo);
     res.json({ ok: true, promo });
   } catch (err) {
     console.error('Erreur activation/désactivation code promo:', err);
@@ -633,8 +695,8 @@ function hashSessionId(sessionId) {
   return crypto.createHash('sha256').update(sessionId).digest('hex');
 }
 
-app.get('/reviews', (req, res) => {
-  const reviews = readJsonSafe(REVIEWS_PATH, []);
+app.get('/reviews', async (req, res) => {
+  const reviews = await loadState('reviews', []);
   const publicReviews = reviews
     .map(({ name, rating, comment, createdAt }) => ({ name, rating, comment, createdAt }))
     .sort((a, b) => b.createdAt - a.createdAt)
@@ -671,7 +733,7 @@ app.post('/submit-review', reviewLimiter, async (req, res) => {
     }
 
     const sessionHash = hashSessionId(sessionId);
-    const reviews = readJsonSafe(REVIEWS_PATH, []);
+    const reviews = await loadState('reviews', []);
     if (reviews.some((r) => r.sessionHash === sessionHash)) {
       return res.status(409).json({ error: 'Un avis a déjà été laissé pour cet achat.' });
     }
@@ -683,7 +745,7 @@ app.post('/submit-review', reviewLimiter, async (req, res) => {
       createdAt: Date.now(),
       sessionHash,
     });
-    fs.writeFileSync(REVIEWS_PATH, JSON.stringify(reviews, null, 2), 'utf-8');
+    await saveState('reviews', reviews);
 
     res.json({ ok: true });
   } catch (err) {
@@ -707,6 +769,7 @@ app.get('/admin/config-status', requireAdmin, (req, res) => {
     cloudinary: check('CLOUDINARY_CLOUD_NAME') && check('CLOUDINARY_API_KEY') && check('CLOUDINARY_API_SECRET'),
     productDeliveryUrl: check('PRODUCT_DELIVERY_URL') && !process.env.PRODUCT_DELIVERY_URL.includes('A-REMPLACER'),
     orderAlertEmail: check('ORDER_ALERT_EMAIL'),
+    persistentStorage: check('UPSTASH_REDIS_REST_URL') && check('UPSTASH_REDIS_REST_TOKEN'),
     nodeEnvProduction: process.env.NODE_ENV === 'production',
   });
 });
@@ -714,8 +777,8 @@ app.get('/admin/config-status', requireAdmin, (req, res) => {
 // ============================================================
 // Commandes — historique + notifications admin (réservé à l'admin)
 // ============================================================
-function recordOrder(session) {
-  const orders = readJsonSafe(ORDERS_PATH, []);
+async function recordOrder(session) {
+  const orders = await loadState('orders', []);
   orders.push({
     id: session.id,
     amount: session.amount_total,
@@ -726,21 +789,21 @@ function recordOrder(session) {
   });
   // garde un historique raisonnable
   const trimmed = orders.slice(-500);
-  fs.writeFileSync(ORDERS_PATH, JSON.stringify(trimmed, null, 2), 'utf-8');
+  await saveState('orders', trimmed);
 }
 
-app.get('/admin/orders', requireAdmin, (req, res) => {
-  const orders = readJsonSafe(ORDERS_PATH, []);
+app.get('/admin/orders', requireAdmin, async (req, res) => {
+  const orders = await loadState('orders', []);
   const sorted = [...orders].sort((a, b) => b.createdAt - a.createdAt);
   res.json({ orders: sorted, unviewedCount: sorted.filter((o) => !o.viewed).length });
 });
 
-app.post('/admin/orders/:id/mark-viewed', requireAdmin, (req, res) => {
-  const orders = readJsonSafe(ORDERS_PATH, []);
+app.post('/admin/orders/:id/mark-viewed', requireAdmin, async (req, res) => {
+  const orders = await loadState('orders', []);
   const order = orders.find((o) => o.id === req.params.id);
   if (!order) return res.status(404).json({ error: 'Commande introuvable.' });
   order.viewed = true;
-  fs.writeFileSync(ORDERS_PATH, JSON.stringify(orders, null, 2), 'utf-8');
+  await saveState('orders', orders);
   res.json({ ok: true });
 });
 

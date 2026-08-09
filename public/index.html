@@ -89,6 +89,7 @@
 
   <section id="avantages">
     <div class="container">
+      <div id="gallery-strip" class="gallery-strip"></div>
       <div class="section-title">
         <button id="cta-banner-btn-2" class="cta-banner" type="button">Commande maintenant !</button>
         <div class="eyebrow" data-key="features.eyebrow">Pourquoi nous choisir</div>
@@ -306,6 +307,22 @@
       } catch (err) {}
     }
     loadPromoBanner();
+
+    // --- Galerie d'images (bandeau défilant, géré depuis le tableau de bord admin) ---
+    async function loadGallery() {
+      try {
+        const res = await fetch('/gallery.json?_=' + Date.now());
+        const { images } = await res.json();
+        const strip = document.getElementById('gallery-strip');
+        if (!images.length) {
+          strip.style.display = 'none';
+          return;
+        }
+        strip.style.display = 'flex';
+        strip.innerHTML = images.map((url) => `<img src="${url}" alt="" loading="lazy" />`).join('');
+      } catch (err) {}
+    }
+    loadGallery();
 
     // --- Avis clients (réels, laissés par des acheteurs vérifiés) ---
     // La section reste entièrement invisible tant qu'il n'y a pas au moins 3 avis publiés.

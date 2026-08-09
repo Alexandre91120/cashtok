@@ -94,6 +94,16 @@
         <a href="/#produit" class="btn-primary" style="display:inline-block;">Ouvrir le mode édition</a>
       </div>
 
+      <!-- GALERIE D'IMAGES -->
+      <div class="admin-card">
+        <h2>Galerie d'images</h2>
+        <p class="admin-card-sub">Affichées en bandeau défilant sur la page d'accueil, juste au-dessus de "Pourquoi choisir...". 20 images maximum.</p>
+        <div id="gallery-grid" style="display:flex; flex-wrap:wrap; gap:12px; margin-bottom:16px;">Chargement…</div>
+        <input id="gallery-file-input" type="file" accept="image/*" style="display:none;" />
+        <button id="gallery-add-btn" class="btn-primary">+ Ajouter une image</button>
+        <div id="gallery-error" class="auth-error"></div>
+      </div>
+
       <!-- DIAGNOSTIC CONFIGURATION -->
       <div class="admin-card">
         <h2>État de la configuration</h2>
@@ -343,6 +353,76 @@
       }
     }
     loadConfigStatus();
+
+    // --- Galerie d'images ---
+    const galleryGrid = document.getElementById('gallery-grid');
+    const galleryError = document.getElementById('gallery-error');
+    const galleryFileInput = document.getElementById('gallery-file-input');
+
+    async function loadGalleryAdmin() {
+      try {
+        const res = await fetch('/gallery.json');
+        const { images } = await res.json();
+        if (!images.length) {
+          galleryGrid.innerHTML = '<p style="color:var(--gray-600); font-size:13px;">Aucune image pour le moment.</p>';
+          return;
+        }
+        galleryGrid.innerHTML = images
+          .map(
+            (url) => `
+          <div style="position:relative; width:90px; height:90px;">
+            <img src="${url}" style="width:100%; height:100%; object-fit:cover; border-radius:10px;" />
+            <button class="gallery-remove-btn" data-url="${url}" type="button"
+              style="position:absolute; top:-6px; right:-6px; width:24px; height:24px; border-radius:50%; background:#dc2626; color:white; border:2px solid white; cursor:pointer; font-size:12px; line-height:1;">✕</button>
+          </div>
+        `
+          )
+          .join('');
+
+        galleryGrid.querySelectorAll('.gallery-remove-btn').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            galleryError.textContent = '';
+            btn.disabled = true;
+            try {
+              const res = await fetch('/admin/gallery/remove', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: btn.getAttribute('data-url') }),
+              });
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error);
+              await loadGalleryAdmin();
+            } catch (err) {
+              galleryError.textContent = err.message;
+              btn.disabled = false;
+            }
+          });
+        });
+      } catch (err) {
+        galleryGrid.innerHTML = '<p style="color:#b91c1c; font-size:13px;">Impossible de charger la galerie.</p>';
+      }
+    }
+    loadGalleryAdmin();
+
+    document.getElementById('gallery-add-btn').addEventListener('click', () => galleryFileInput.click());
+
+    galleryFileInput.addEventListener('change', async () => {
+      galleryError.textContent = '';
+      const file = galleryFileInput.files[0];
+      galleryFileInput.value = '';
+      if (!file) return;
+
+      const fd = new FormData();
+      fd.append('image', file);
+      try {
+        const res = await fetch('/admin/gallery/add', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        await loadGalleryAdmin();
+      } catch (err) {
+        galleryError.textContent = err.message;
+      }
+    });
   </script>
 </body>
 </html>

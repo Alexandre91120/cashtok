@@ -34,6 +34,7 @@ const DATA_DIR = path.join(__dirname, 'data');
 const PROMO_PATH = path.join(DATA_DIR, 'promo.json');
 const THEME_PATH = path.join(DATA_DIR, 'theme.json');
 const REVIEWS_PATH = path.join(DATA_DIR, 'reviews.json');
+const GALLERY_PATH = path.join(DATA_DIR, 'gallery.json');
 const ORDERS_PATH = path.join(DATA_DIR, 'orders.json');
 const CONTENT_PATH = path.join(__dirname, 'public', 'content.json');
 
@@ -422,6 +423,74 @@ app.delete('/admin/upload-image', requireAdmin, async (req, res) => {
     }
   }
   res.json({ ok: true });
+});
+
+// ============================================================
+// Galerie d'images (bandeau défilant sur la page d'accueil)
+// ============================================================
+const GALLERY_MAX_IMAGES = 20;
+
+app.get('/gallery.json', (req, res) => {
+  const images = readJsonSafe(GALLERY_PATH, []);
+  res.json({ images });
+});
+
+app.post('/admin/gallery/add', requireAdmin, (req, res) => {
+  upload.single('image')(req, res, (err) => {
+    if (err) {
+      return res.status(400).json({ error: err.message || "Échec de l'upload." });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'Aucun fichier reçu.' });
+    }
+    if (!process.env.CLOUDINARY_CLOUD_NAME) {
+      return res.status(500).json({ error: "Stockage d'images non configuré (variables CLOUDINARY_* manquantes)." });
+    }
+
+    const images = readJsonSafe(GALLERY_PATH, []);
+    if (images.length >= GALLERY_MAX_IMAGES) {
+      return res.status(400).json({ error: `Maximum ${GALLERY_MAX_IMAGES} images dans la galerie. Supprimes-en une avant d'en ajouter une nouvelle.` });
+    }
+
+    const stream = cloudinary.uploader.upload_stream(
+      { folder: 'cashtok/gallery', resource_type: 'image' },
+      (error, result) => {
+        if (error) {
+          console.error('Erreur upload Cloudinary (galerie):', error);
+          return res.status(500).json({ error: "Échec de l'upload vers le stockage d'images." });
+        }
+        images.push(result.secure_url);
+        fs.writeFileSync(GALLERY_PATH, JSON.stringify(images, null, 2), 'utf-8');
+        res.json({ ok: true, images });
+      }
+    );
+    stream.end(req.file.buffer);
+  });
+});
+
+app.post('/admin/gallery/remove', requireAdmin, async (req, res) => {
+  const { url } = req.body || {};
+  if (typeof url !== 'string' || !url.includes('res.cloudinary.com')) {
+    return res.status(400).json({ error: 'URL invalide.' });
+  }
+
+  const images = readJsonSafe(GALLERY_PATH, []);
+  const idx = images.indexOf(url);
+  if (idx === -1) {
+    return res.status(404).json({ error: 'Image introuvable dans la galerie.' });
+  }
+  images.splice(idx, 1);
+  fs.writeFileSync(GALLERY_PATH, JSON.stringify(images, null, 2), 'utf-8');
+
+  const publicId = extractCloudinaryPublicId(url);
+  if (publicId) {
+    try {
+      await cloudinary.uploader.destroy(publicId);
+    } catch (err) {
+      console.warn('Suppression Cloudinary échouée (image galerie déjà supprimée ?):', err.message);
+    }
+  }
+  res.json({ ok: true, images });
 });
 
 // ============================================================

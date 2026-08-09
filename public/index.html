@@ -320,8 +320,12 @@
           strip.style.display = 'none';
           return;
         }
-        strip.style.display = 'flex';
-        strip.innerHTML = images.map((url) => `<img src="${url}" alt="" loading="lazy" />`).join('');
+        strip.style.display = 'block';
+        const imagesHtml = images.map((url) => `<img src="${url}" alt="" loading="lazy" />`).join('');
+        // Les images sont dupliquées pour créer une boucle de défilement parfaitement continue.
+        strip.innerHTML = `<div class="gallery-strip-track">${imagesHtml}${imagesHtml}</div>`;
+        const track = strip.querySelector('.gallery-strip-track');
+        track.style.animationDuration = Math.max(20, images.length * 4) + 's';
       } catch (err) {}
     }
     loadGallery();

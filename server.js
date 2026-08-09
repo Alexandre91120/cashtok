@@ -698,6 +698,7 @@ function hashSessionId(sessionId) {
 app.get('/reviews', async (req, res) => {
   const reviews = await loadState('reviews', []);
   const publicReviews = reviews
+    .filter((r) => r.visible !== false)
     .map(({ name, rating, comment, createdAt }) => ({ name, rating, comment, createdAt }))
     .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, 50);
@@ -744,6 +745,8 @@ app.post('/submit-review', reviewLimiter, async (req, res) => {
       comment: cleanComment,
       createdAt: Date.now(),
       sessionHash,
+      visible: true,
+      seen: false,
     });
     await saveState('reviews', reviews);
 
@@ -752,6 +755,31 @@ app.post('/submit-review', reviewLimiter, async (req, res) => {
     console.error('Erreur soumission avis:', err);
     res.status(500).json({ error: 'Erreur serveur.' });
   }
+});
+
+app.get('/admin/reviews', requireAdmin, async (req, res) => {
+  const reviews = await loadState('reviews', []);
+  const sorted = [...reviews].sort((a, b) => b.createdAt - a.createdAt);
+  res.json({ reviews: sorted, unseenCount: sorted.filter((r) => !r.seen).length });
+});
+
+app.post('/admin/reviews/:id/mark-seen', requireAdmin, async (req, res) => {
+  const reviews = await loadState('reviews', []);
+  const review = reviews.find((r) => r.sessionHash === req.params.id);
+  if (!review) return res.status(404).json({ error: 'Avis introuvable.' });
+  review.seen = true;
+  await saveState('reviews', reviews);
+  res.json({ ok: true });
+});
+
+app.post('/admin/reviews/:id/toggle-visible', requireAdmin, async (req, res) => {
+  const { visible } = req.body || {};
+  const reviews = await loadState('reviews', []);
+  const review = reviews.find((r) => r.sessionHash === req.params.id);
+  if (!review) return res.status(404).json({ error: 'Avis introuvable.' });
+  review.visible = !!visible;
+  await saveState('reviews', reviews);
+  res.json({ ok: true, review });
 });
 
 // ============================================================

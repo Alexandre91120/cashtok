@@ -44,6 +44,8 @@
             <div id="orders-dropdown" class="orders-dropdown" style="display:none;">
               <div class="orders-dropdown-header">Commandes</div>
               <div id="orders-list"></div>
+              <div class="orders-dropdown-header">Avis clients</div>
+              <div id="reviews-notif-list"></div>
             </div>
           </div>
           <button id="admin-logout-btn" class="btn-nav" type="button">Déconnexion</button>
@@ -439,6 +441,8 @@
         if (isAdmin) {
           loadOrders();
           setInterval(loadOrders, 20000);
+          loadReviewsNotif();
+          setInterval(loadReviewsNotif, 20000);
         }
       } catch (err) {
         editToggle.style.display = 'none';
@@ -455,7 +459,9 @@
     const mailboxBadge = document.getElementById('mailbox-badge');
     const ordersDropdown = document.getElementById('orders-dropdown');
     const ordersList = document.getElementById('orders-list');
+    const reviewsNotifList = document.getElementById('reviews-notif-list');
     let ordersCache = [];
+    let reviewsCache = [];
 
     function fmtDate(ts) {
       return new Date(ts).toLocaleString('fr-FR');
@@ -465,7 +471,7 @@
     }
 
     function updateMailboxBadge() {
-      const count = ordersCache.filter((o) => !o.viewed).length;
+      const count = ordersCache.filter((o) => !o.viewed).length + reviewsCache.filter((r) => !r.seen).length;
       mailboxBadge.style.display = count > 0 ? 'flex' : 'none';
       mailboxBadge.textContent = count > 9 ? '9+' : String(count);
     }
@@ -530,6 +536,58 @@
     document.addEventListener('click', (e) => {
       if (!e.target.closest('.mailbox-wrap')) ordersDropdown.style.display = 'none';
     });
+
+    // --- Avis clients (notification dans la boîte de messages, réservé à l'admin) ---
+    function renderReviewsNotif() {
+      if (!reviewsCache.length) {
+        reviewsNotifList.innerHTML = '<div class="orders-empty">Aucun avis pour le moment.</div>';
+        return;
+      }
+      reviewsNotifList.innerHTML = reviewsCache
+        .map(
+          (r) => `
+        <div class="order-row" data-id="${r.sessionHash}">
+          <div class="order-row-icon-wrap">
+            <span class="order-row-icon">⭐</span>
+            ${!r.seen ? '<span class="order-row-icon-dot"></span>' : ''}
+          </div>
+          <div style="flex:1; min-width:0;">
+            <div class="order-row-info">${r.name} — ${'⭐'.repeat(r.rating)}</div>
+            <div class="order-row-date">${fmtDate(r.createdAt)}</div>
+            <div class="order-row-details">${r.comment}</div>
+          </div>
+        </div>
+      `
+        )
+        .join('');
+
+      reviewsNotifList.querySelectorAll('.order-row').forEach((row) => {
+        row.addEventListener('click', async () => {
+          row.classList.toggle('expanded');
+          const id = row.getAttribute('data-id');
+          const review = reviewsCache.find((r) => r.sessionHash === id);
+          if (review && !review.seen) {
+            review.seen = true;
+            const dot = row.querySelector('.order-row-icon-dot');
+            if (dot) dot.remove();
+            updateMailboxBadge();
+            try {
+              await fetch(`/admin/reviews/${encodeURIComponent(id)}/mark-seen`, { method: 'POST' });
+            } catch (err) {}
+          }
+        });
+      });
+    }
+
+    async function loadReviewsNotif() {
+      try {
+        const res = await fetch('/admin/reviews');
+        const data = await res.json();
+        reviewsCache = data.reviews;
+        updateMailboxBadge();
+        renderReviewsNotif();
+      } catch (err) {}
+    }
 
     // --- Historique annuler / rétablir ---
     let historyStack = [];

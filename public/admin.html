@@ -27,6 +27,8 @@
           <div id="orders-dropdown" class="orders-dropdown" style="display:none;">
             <div class="orders-dropdown-header">Commandes</div>
             <div id="orders-list"></div>
+            <div class="orders-dropdown-header">Avis clients</div>
+            <div id="reviews-notif-list"></div>
           </div>
         </div>
         <button id="logout-btn" class="btn-nav">Déconnexion</button>
@@ -104,6 +106,13 @@
         <div id="gallery-error" class="auth-error"></div>
       </div>
 
+      <!-- AVIS CLIENTS -->
+      <div class="admin-card">
+        <h2>Avis clients</h2>
+        <p class="admin-card-sub">Tous les avis laissés par tes clients après achat. Active ou désactive leur affichage sur le site avec le bouton vert/rouge.</p>
+        <div id="reviews-admin-list">Chargement…</div>
+      </div>
+
       <!-- DIAGNOSTIC CONFIGURATION -->
       <div class="admin-card">
         <h2>État de la configuration</h2>
@@ -131,14 +140,16 @@
     const mailboxBadge = document.getElementById('mailbox-badge');
     const ordersDropdown = document.getElementById('orders-dropdown');
     const ordersList = document.getElementById('orders-list');
+    const reviewsNotifList = document.getElementById('reviews-notif-list');
     let ordersCache = [];
+    let reviewsCache = [];
 
     function fmtAmount(cents) {
       return (cents / 100).toFixed(2).replace('.', ',') + ' €';
     }
 
     function updateMailboxBadge() {
-      const count = ordersCache.filter((o) => !o.viewed).length;
+      const count = ordersCache.filter((o) => !o.viewed).length + reviewsCache.filter((r) => !r.seen).length;
       mailboxBadge.style.display = count > 0 ? 'flex' : 'none';
       mailboxBadge.textContent = count > 9 ? '9+' : String(count);
     }
@@ -205,6 +216,111 @@
     document.addEventListener('click', (e) => {
       if (!e.target.closest('.mailbox-wrap')) ordersDropdown.style.display = 'none';
     });
+
+    // --- Avis clients (notification dans la boîte de messages + carte de modération) ---
+    function renderReviewsNotif() {
+      if (!reviewsCache.length) {
+        reviewsNotifList.innerHTML = '<div class="orders-empty">Aucun avis pour le moment.</div>';
+        return;
+      }
+      reviewsNotifList.innerHTML = reviewsCache
+        .map(
+          (r) => `
+        <div class="order-row" data-id="${r.sessionHash}">
+          <div class="order-row-icon-wrap">
+            <span class="order-row-icon">⭐</span>
+            ${!r.seen ? '<span class="order-row-icon-dot"></span>' : ''}
+          </div>
+          <div style="flex:1; min-width:0;">
+            <div class="order-row-info">${r.name} — ${'⭐'.repeat(r.rating)}</div>
+            <div class="order-row-date">${fmtDate(r.createdAt)}</div>
+            <div class="order-row-details">${r.comment}</div>
+          </div>
+        </div>
+      `
+        )
+        .join('');
+
+      reviewsNotifList.querySelectorAll('.order-row').forEach((row) => {
+        row.addEventListener('click', async () => {
+          row.classList.toggle('expanded');
+          const id = row.getAttribute('data-id');
+          const review = reviewsCache.find((r) => r.sessionHash === id);
+          if (review && !review.seen) {
+            review.seen = true;
+            const dot = row.querySelector('.order-row-icon-dot');
+            if (dot) dot.remove();
+            updateMailboxBadge();
+            try {
+              await fetch(`/admin/reviews/${encodeURIComponent(id)}/mark-seen`, { method: 'POST' });
+            } catch (err) {}
+          }
+        });
+      });
+    }
+
+    function renderReviewsAdmin() {
+      const box = document.getElementById('reviews-admin-list');
+      if (!reviewsCache.length) {
+        box.innerHTML = '<p style="color:var(--gray-600); font-size:13px;">Aucun avis pour le moment.</p>';
+        return;
+      }
+      box.innerHTML = reviewsCache
+        .map((r) => {
+          const visible = r.visible !== false;
+          return `
+        <div class="promo-row" style="align-items:flex-start; gap:12px; border-bottom:1px solid var(--gray-200); padding:12px 0;">
+          <div style="flex:1; min-width:0;">
+            <div><strong>${r.name}</strong> — ${'⭐'.repeat(r.rating)}</div>
+            <div style="font-size:13px; color:var(--gray-600); margin:4px 0;">${r.comment}</div>
+            <div style="font-size:12px; color:var(--gray-500);">${fmtDate(r.createdAt)}</div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+            <button class="promo-toggle-btn ${visible ? 'is-active' : 'is-inactive'}" data-id="${r.sessionHash}"
+              title="${visible ? 'Visible sur le site — cliquer pour masquer' : 'Masqué — cliquer pour afficher'}"></button>
+            <span style="font-size:11px; color:var(--gray-600);">${visible ? 'Visible' : 'Masqué'}</span>
+          </div>
+        </div>
+      `;
+        })
+        .join('');
+
+      box.querySelectorAll('.promo-toggle-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const id = btn.getAttribute('data-id');
+          const review = reviewsCache.find((r) => r.sessionHash === id);
+          const newVisible = !(review.visible !== false);
+          btn.disabled = true;
+          try {
+            const res = await fetch(`/admin/reviews/${encodeURIComponent(id)}/toggle-visible`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ visible: newVisible }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+            review.visible = newVisible;
+            renderReviewsAdmin();
+          } catch (err) {
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+    }
+
+    async function loadReviews() {
+      try {
+        const res = await fetch('/admin/reviews');
+        const data = await res.json();
+        reviewsCache = data.reviews;
+        updateMailboxBadge();
+        renderReviewsNotif();
+        renderReviewsAdmin();
+      } catch (err) {}
+    }
+    loadReviews();
+    setInterval(loadReviews, 20000);
 
     // --- Code promo ---
     const promoBox = document.getElementById('promo-current');

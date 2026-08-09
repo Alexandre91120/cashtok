@@ -144,7 +144,7 @@ section { padding: 80px 0; }
   animation: gallery-scroll linear infinite;
 }
 .gallery-strip img {
-  height: 220px; width: auto; max-width: 320px; border-radius: 14px;
+  height: 280px; width: auto; max-width: 400px; border-radius: 14px;
   flex-shrink: 0; object-fit: cover; cursor: pointer;
   box-shadow: 0 8px 20px rgba(18,39,90,0.12);
   transition: transform .3s ease, box-shadow .3s ease;
